@@ -1,14 +1,12 @@
-// src/lib/brand.ts
-
 export const brand = {
-  name: "StreamHub",
+  name: "Clothing Store",
 
   social: {
-    github: "https://github.com/sumit298/streamHub",
+    github: "https://github.com/sumit298/clothing_store",
   },
 
   emails: {
-    from: "StreamHub <noreply@streamhub.com>",
-    support: "support@streamhub.com",
+    from: "Clothing Store <onboarding@resend.dev>",
+    support: "sumitgdsc@gmail.com",
   },
 };

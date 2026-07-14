@@ -59,3 +59,14 @@ export async function constructWebhookEvent(
   const client = getStripe();
   return client.webhooks.constructEventAsync(payload, signature, webhookSecret);
 }
+
+export async function createRefund(params: {
+  paymentIntentId: string;
+  amount: number; // omit for full refund;
+}) {
+  const client = getStripe();
+  return client.refunds.create({
+    payment_intent: params.paymentIntentId,
+    ...(params.amount && { amount: params.amount }),
+  });
+}

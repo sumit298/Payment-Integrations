@@ -1,8 +1,9 @@
-import express from "express";
+import express, { Request, Response } from "express";
 import {
   createOneTimeCheckoutSession,
   retrieveCheckoutSession,
   constructWebhookEvent,
+  createRefund,
 } from "../lib/payments";
 import { auth } from "../lib/auth";
 import { db } from "../lib/db";
@@ -13,7 +14,10 @@ import { inngest } from "../lib/job/client";
 const app = express();
 
 app.use((req, res, next) => {
-  res.header("Access-Control-Allow-Origin", process.env.BETTER_AUTH_URL ?? "http://localhost:3000");
+  res.header(
+    "Access-Control-Allow-Origin",
+    process.env.BETTER_AUTH_URL ?? "http://localhost:3000",
+  );
   res.header("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
   res.header("Access-Control-Allow-Headers", "Content-Type, Cookie");
   res.header("Access-Control-Allow-Credentials", "true");
@@ -124,6 +128,91 @@ app.post("/api/purchases/claim", async (req, res) => {
   }
 });
 
+app.get("/api/purchases", async (req: Request, res: Response) => {
+  try {
+    const headers = new Headers();
+    for (const [key, value] of Object.entries(req.headers)) {
+      if (Array.isArray(value)) value.forEach((v) => headers.append(key, v));
+      else if (value !== undefined) headers.set(key, value);
+    }
+
+    const session = await auth.api.getSession({ headers });
+    if (!session) return res.status(401).json({ error: "Unauthorized" });
+
+    const userPurchases = await db
+      .select({
+        id: purchases.id,
+        tier: purchases.tier,
+        status: purchases.status,
+        amount: purchases.amount,
+        currency: purchases.currency,
+        githubAccessGranted: purchases.githubAccessGranted,
+        purchasedAt: purchases.purchasedAt,
+        stripeCheckoutSessionId: purchases.stripeCheckoutSessionId,
+      })
+      .from(purchases)
+      .where(eq(purchases.userId, session.user.id))
+      .orderBy(purchases.purchasedAt);
+
+    return res.json({ purchases: userPurchases });
+  } catch (error) {
+    console.error("Error fetching purchases:", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+app.post("/api/payments/refund", async (req, res) => {
+  try {
+    const headers = new Headers();
+    for (const [key, value] of Object.entries(req.headers)) {
+      if (Array.isArray(value)) value.forEach((v) => headers.append(key, v));
+      else if (value !== undefined) headers.set(key, value);
+    }
+
+    const session = await auth.api.getSession({ headers });
+    if (!session) return res.status(401).json({ error: "Unauthorized" });
+
+    const { purchaseId, amount } = req.body;
+
+    const purchase = await db
+      .select()
+      .from(purchases)
+      .where(eq(purchases.id, purchaseId))
+      .limit(1);
+
+    if (!purchase[0])
+      return res.status(404).json({ error: "Purchase not found" });
+    if (purchase[0].userId !== session.user.id)
+      return res.status(403).json({ error: "Forbidden" });
+    if (!purchase[0].stripePaymentIntentId)
+      return res.status(400).json({ error: "No payment intent found" });
+    if (purchase[0].status === "refunded")
+      return res.status(400).json({ error: "Already refunded" });
+    if (purchase[0].status === "refund_pending")
+      return res.status(400).json({ error: "Refund already in progress" });
+
+    await db
+      .update(purchases)
+      .set({ status: "refund_pending", updatedAt: new Date() })
+      .where(eq(purchases.id, purchaseId));
+
+    await createRefund({
+      paymentIntentId: purchase[0].stripePaymentIntentId,
+      ...(amount && { amount }),
+    });
+
+    return res.json({ success: true });
+  } catch (error: any) {
+    if (error?.code === "charge_already_refunded") {
+      return res
+        .status(400)
+        .json({ error: "This purchase has already been refunded" });
+    }
+    console.error("Error processing refund:", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 app.post(
   "/api/payments/webhook",
   express.raw({ type: "application/json" }),
@@ -179,10 +268,7 @@ app.post(
       });
     }
   },
-
-  
 );
-
 
 // This is the "thin webhook handler" pattern. Notice what it does not do: it does not query the database, send emails, grant access, or call any external service. It validates the signature, extracts the fields it needs, and sends a typed event to Inngest.
 

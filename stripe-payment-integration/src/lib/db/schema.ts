@@ -55,7 +55,7 @@ export const verification = pgTable("verification", {
 });
 
 export const purchaseTierEnum = pgEnum("purchase_tier", ["pro"]);
-export const purchaseStatusEnum = pgEnum("purchase_status", ["completed", "partially_refunded", "refunded"]);
+export const purchaseStatusEnum = pgEnum("purchase_status", ["completed", "partially_refunded", "refunded", "refund_pending"]);
 
 export const purchases = pgTable("purchases", {
   id: text("id").primaryKey().$default(() => crypto.randomUUID()),
