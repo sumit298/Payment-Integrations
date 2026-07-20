@@ -270,7 +270,11 @@ function DashboardContent() {
                 </p>
                 <p className="text-xs text-[#6b6860]">
                   GitHub access:{" "}
-                  {p.githubAccessGranted ? "✅ Granted" : "⏳ Pending"}
+                  {p.status === "refund_pending"
+                    ? "⏳ Pending revocation"
+                    : p.githubAccessGranted
+                    ? "✅ Granted"
+                    : "⏳ Pending"}
                 </p>
               </div>
               <div className="text-right">
@@ -282,17 +286,14 @@ function DashboardContent() {
                 )}
                 {p.status === "partially_refunded" && (
                   <p className="text-xs text-yellow-600 mt-1">
-                    Partial refund issued
+                    Partial refund issued — full refund still available
                   </p>
                 )}
 
-                {(p.status === "partially_refunded" ||
-                  p.status === "completed") && (
+                {p.status === "completed" && (
                   <div className="flex gap-2 justify-end">
                     <button
-                      onClick={() =>
-                        handleRefund(p.id, Math.floor(p.amount / 2))
-                      }
+                      onClick={() => handleRefund(p.id, Math.floor(p.amount / 2))}
                       disabled={refunding === p.id}
                       className="text-xs px-3 py-1 rounded-lg border border-yellow-400 text-yellow-700 hover:bg-yellow-50 disabled:opacity-50"
                     >

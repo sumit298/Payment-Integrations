@@ -31,12 +31,16 @@ app.use((req, _res, next) => {
 });
 
 app.post("/api/payments/checkout", async (req, res) => {
-  const priceId = process.env.STRIPE_PRO_PRICE_ID;
-
-  if (!priceId) {
-    res.status(500).json({ error: "Price not configured" });
-    return;
+  const headers = new Headers();
+  for (const [key, value] of Object.entries(req.headers)) {
+    if (Array.isArray(value)) value.forEach((v) => headers.append(key, v));
+    else if (value !== undefined) headers.set(key, value);
   }
+  const session = await auth.api.getSession({ headers });
+  if (!session) return res.status(401).json({ error: "Unauthorized" });
+
+  const priceId = process.env.STRIPE_PRO_PRICE_ID;
+  if (!priceId) return res.status(500).json({ error: "Price not configured" });
 
   const baseUrl = process.env.BETTER_AUTH_URL ?? "http://localhost:3000";
   const tier = "pro";
@@ -45,7 +49,7 @@ app.post("/api/payments/checkout", async (req, res) => {
     priceId,
     successUrl: `${baseUrl}/dashboard?purchase=success&session_id={CHECKOUT_SESSION_ID}`,
     cancelUrl: `${baseUrl}/pricing`,
-    metaData: { tier },
+    metaData: { tier, userId: session.user.id },
   });
 
   res.json({ url: checkoutSession.url });
@@ -90,6 +94,10 @@ app.post("/api/purchases/claim", async (req, res) => {
 
     if (stripeSession.payment_status !== "paid") {
       return res.status(400).json({ error: "Payment not received" });
+    }
+
+    if (stripeSession.metadata?.userId !== session.user.id) {
+      return res.status(403).json({ error: "Session does not belong to this user" });
     }
 
     const tier = (stripeSession.metadata?.tier ?? "pro") as "pro";
@@ -154,7 +162,7 @@ app.get("/api/purchases", async (req: Request, res: Response) => {
       .where(eq(purchases.userId, session.user.id))
       .orderBy(purchases.purchasedAt);
 
-    return res.json({ purchases: userPurchases });
+    return res.json({ purchases: userPurchases  });
   } catch (error) {
     console.error("Error fetching purchases:", error);
     return res.status(500).json({ error: "Internal server error" });
@@ -190,6 +198,8 @@ app.post("/api/payments/refund", async (req, res) => {
       return res.status(400).json({ error: "Already refunded" });
     if (purchase[0].status === "refund_pending")
       return res.status(400).json({ error: "Refund already in progress" });
+    if (purchase[0].status === "partially_refunded" && amount)
+      return res.status(400).json({ error: "Only a full refund of the remaining amount is allowed" });
 
     await db
       .update(purchases)
