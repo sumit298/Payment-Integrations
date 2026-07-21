@@ -10,4 +10,13 @@ const pool = new Pool({
   },
 });
 
+(async () => {
+  try {
+    const result = await pool.query("SELECT NOW()");
+    console.log("DB OK:", result.rows);
+  } catch (e) {
+    console.error("DB ERROR:", e);
+  }
+})();
+
 export const db = drizzle(pool, { schema });
