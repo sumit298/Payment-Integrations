@@ -30,6 +30,7 @@ function DashboardContent() {
   const [tier, setTier] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [purchases, setPurchases] = useState<Purchase[]>([]);
+  const [purchasesLoaded, setPurchasesLoaded] = useState(false);
   const [refunding, setRefunding] = useState<string | null>(null);
 
   useEffect(() => {
@@ -55,6 +56,7 @@ function DashboardContent() {
       const data = await res.json();
       if (res.ok) setPurchases(data.purchases ?? []);
     } catch {}
+    setPurchasesLoaded(true);
   }
 
   async function handleRefund(purchaseId: string, amount?: number) {
@@ -322,7 +324,7 @@ function DashboardContent() {
           ))}
         </div>
       ) : (
-        claimState === "idle" && (
+        purchases.length === 0 && claimState === "idle" && purchasesLoaded && (
           <div className="bg-white border border-[#e5e4df] rounded-xl p-6 text-center">
             <p className="text-[#6b6860] text-sm mb-4">
               You have not purchased access yet.
